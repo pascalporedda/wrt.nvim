@@ -35,7 +35,15 @@ Optional, for a nicer picker — the plugin detects whichever you have and falls
 - [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 - [fzf-lua](https://github.com/ibhagwan/fzf-lua)
 
-Run `:checkhealth wrt` after installing.
+Run `:checkhealth wrt` after installing. It reports the resolved `wrt` path and whether the binary
+runs, the git version, whether the current directory is inside a managed root, the `state.json`
+version compatibility, the picker backend that will be used, and which optional dependencies are
+present.
+
+> Neovim discovers health checks from the runtimepath, and lazy.nvim only adds a plugin to the
+> runtimepath once it loads. If you lazy-load this plugin with `cmd`/`keys`, `:checkhealth wrt`
+> reports "no healthcheck found" until you have used it once in that session. Install without lazy
+> triggers (as above) to have it always available.
 
 ## Installation
 

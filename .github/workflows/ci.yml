@@ -9,8 +9,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: JohnnyMorganz/stylua-action@v4
+      - uses: actions/checkout@v5
+      - uses: JohnnyMorganz/stylua-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: latest
@@ -23,7 +23,7 @@ jobs:
       matrix:
         neovim: [v0.11.0, stable, nightly]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: rhysd/action-setup-vim@v1
         with:
@@ -32,7 +32,7 @@ jobs:
 
       - name: Cache the wrt binary
         id: wrt-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/wrt
           key: wrt-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}

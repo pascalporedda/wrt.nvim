@@ -356,6 +356,13 @@ that will be used, and which optional dependencies are present.
 
 The CLI has no `--version` flag, so `wrt help` is used as the liveness probe.
 
+                                                             *wrt-health-lazy*
+Neovim discovers health checks from the |runtimepath|, and lazy.nvim only adds a
+plugin to the runtimepath when it loads. If you lazy-load this plugin with `cmd`
+or `keys`, `:checkhealth wrt` reports "No healthcheck found" until you have used
+it once in that session. Install it without lazy triggers to keep the health
+check always available; `setup()` including every `require` takes under 2ms.
+
 ==============================================================================
 12. DEVELOPMENT                                                *wrt-development*
 
