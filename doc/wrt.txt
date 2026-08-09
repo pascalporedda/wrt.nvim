@@ -1,0 +1,376 @@
+*wrt.txt*                            Neovim integration for the wrt worktree CLI
+
+==============================================================================
+CONTENTS                                                          *wrt-contents*
+
+  1. Introduction ................................ |wrt-introduction|
+  2. Requirements ................................ |wrt-requirements|
+  3. Installation ................................ |wrt-installation|
+  4. Configuration ............................... |wrt-configuration|
+  5. Keymaps ..................................... |wrt-keymaps|
+  6. Picker ...................................... |wrt-picker|
+  7. Commands .................................... |wrt-commands|
+  8. API ......................................... |wrt-api|
+  9. Events ...................................... |wrt-events|
+ 10. Behaviour ................................... |wrt-behaviour|
+ 11. Health ..................................... |wrt-health|
+ 12. Development ................................. |wrt-development|
+
+==============================================================================
+1. INTRODUCTION                                               *wrt-introduction*
+
+wrt.nvim drives the `wrt` command line tool, a Git worktree helper aimed at
+parallel and agentic development.
+
+`wrt` manages more than plain |:!git| worktrees do: reserved port blocks,
+generated `.env` and `.wrt.env` files, and Supabase allocations, all recorded
+in `<managed-root>/.git/.wrt/state.json`. Worktrees in a managed root must be
+created and removed through `wrt`, never through `git worktree`, or that state
+drifts.
+
+The headline editor feature is buffer migration: switching worktrees moves your
+open buffers to the same relative path in the target worktree, preserving your
+window layout and cursor positions.
+
+A managed root looks like this: >
+
+    <root>/.git            bare repository (the git common dir)
+    <root>/<default>       primary checkout, tracked as allocation "main"
+    <root>/<slug>          feature worktrees, siblings of the primary checkout
+<
+==============================================================================
+2. REQUIREMENTS                                               *wrt-requirements*
+
+- Neovim >= 0.11
+- git
+- The `wrt` CLI. There are no tagged releases yet, so install from source: >
+
+    cargo install --locked --git https://github.com/pascalporedda/wrt-cli
+<
+  It installs to `~/.cargo/bin/wrt`, which this plugin finds even when that
+  directory is not on $PATH. Override the location with `bin`.
+
+Optional picker backends, detected at runtime:
+
+- snacks.nvim (`Snacks.picker`)
+- telescope.nvim
+- fzf-lua
+
+With none of them installed the picker falls back to |vim.ui.select()|, which
+is always available.
+
+==============================================================================
+3. INSTALLATION                                               *wrt-installation*
+
+With lazy.nvim: >
+
+    { "pascalporedda/wrt.nvim", opts = {} }
+<
+This registers |:Wrt| and the Lua API but defines no keymaps. To enable the
+documented set: >
+
+    {
+      "pascalporedda/wrt.nvim",
+      opts = { keymaps = true },
+    }
+<
+Lazy-loading by command or key works without eager setup: >
+
+    {
+      "pascalporedda/wrt.nvim",
+      cmd = "Wrt",
+      keys = {
+        { "<leader>Ww", function() require("wrt").pick() end, desc = "Worktrees" },
+      },
+      opts = {},
+    }
+<
+==============================================================================
+4. CONFIGURATION                                             *wrt-configuration*
+
+                                                                   *wrt.setup()*
+wrt.setup({opts})
+
+Everything with a side effect happens here. Requiring any wrt module on its own
+does nothing observable.
+
+Defaults: >
+
+    require("wrt").setup({
+      bin = nil,
+      picker = "auto",
+      keymaps = false,
+      keymap_prefix = "<leader>W",
+      which_key = true,
+      which_key_group = "worktree (wrt)",
+      switch = {
+        migrate_buffers = true,
+        clear_jumps = true,
+        apply_env = true,
+        notify = true,
+      },
+      env = {
+        notify = false,
+      },
+      create = {
+        switch_after = true,
+      },
+      notify = {
+        enabled = true,
+        title = "wrt",
+      },
+      terminal = {
+        border = "rounded",
+        width = 0.85,
+        height = 0.8,
+        backdrop = 60,
+        title_pos = "center",
+      },
+      git = {
+        log_count = 12,
+      },
+    })
+<
+                                                                       *wrt.bin*
+bin ~
+        string|nil, default nil. Absolute path to the `wrt` binary. When nil the
+        plugin looks on $PATH first, then at `~/.cargo/bin/wrt`.
+
+                                                                    *wrt.picker*
+picker ~
+        "auto"|"snacks"|"telescope"|"fzf-lua"|"select", default "auto".
+        "auto" probes snacks, telescope, fzf-lua and then select, in that order.
+        An explicitly named backend that is not installed falls back to
+        "select"; |:checkhealth| reports that.
+
+                                                                   *wrt.keymaps*
+keymaps ~
+        boolean|table, default false. false defines nothing, so the plugin never
+        claims a prefix you may already use. true defines the set in
+        |wrt-keymaps|. A table is merged over those defaults: map a suffix to an
+        action name to add or change one, or to false to drop it. >
+
+            opts = {
+              keymaps = { x = false, z = "goto_main" },
+              keymap_prefix = "<leader>gw",
+            }
+<
+                                                             *wrt.keymap_prefix*
+keymap_prefix ~
+        string, default "<leader>W". Prepended to every keymap suffix.
+
+                                                            *wrt.switch.notify*
+switch ~
+        migrate_buffers   move open buffers into the target worktree
+        clear_jumps       run |:clearjumps| after switching
+        apply_env         push `wrt env` into |vim.env| after switching
+        notify            report the worktree and the migration counts
+
+                                                                *wrt.terminal*
+terminal ~
+        Geometry of the floating terminal. `width` and `height` are fractions of
+        the editor. `backdrop` only applies when snacks.nvim provides the
+        terminal; the plain fallback ignores it.
+
+==============================================================================
+5. KEYMAPS                                                         *wrt-keymaps*
+
+Enabled by `keymaps = true`, under `keymap_prefix` (default "<leader>W"):
+
+    <leader>Ww   pick                 Worktrees (switch)
+    <leader>WW   pick                 Worktrees (switch)
+    <leader>Wn   create               New worktree
+    <leader>Wx   remove_current       Remove current worktree
+    <leader>Wm   goto_main            Go to main worktree
+    <leader>Wp   prune                Prune missing worktrees
+    <leader>Wh   housekeeping_dry     Housekeeping (dry run)
+    <leader>WH   housekeeping_apply   Housekeeping (apply)
+    <leader>Ws   status               Root status
+    <leader>Wi   discover             Discover .wrt.json (codex)
+    <leader>Wc   clone                Clone a new managed root
+    <leader>We   apply_env_current    Apply worktree env
+    <leader>Wt   shell_current        Shell in worktree
+    <leader>Wr   run_current          Run command in worktree
+    <leader>Wd   db_current           Database task
+
+The action names above are the keys of `require("wrt").actions`, each holding a
+`fn` and a `desc`. `require("wrt").DEFAULT_KEYMAPS` is the suffix-to-action map.
+
+==============================================================================
+6. PICKER                                                           *wrt-picker*
+
+The picker lists every tracked worktree, main first then alphabetical, with the
+branch, a dirty marker and the reserved port block. The preview shows the
+worktree metadata plus `git status --short` and the recent commits, fetched
+asynchronously and cached.
+
+Keys (snacks and telescope):
+
+    <cr>     switch to the worktree
+    <c-x>    remove worktree
+    <a-n>    new worktree
+    <a-e>    apply that worktree's `wrt env`
+    <a-t>    shell in the worktree
+    <a-b>    database task
+    <a-y>    yank the path
+    <c-l>    reload (snacks only)
+
+With snacks these also work from normal mode in the list: x, n, e, t, b, y, r.
+
+The snacks source is registered as `wrt`, so `Snacks.picker.wrt()` and
+`Snacks.picker.pick("wrt")` work too.
+
+The |vim.ui.select()| fallback offers the same list and switches on selection;
+the other actions remain available through the keymaps and the API.
+
+==============================================================================
+7. COMMANDS                                                       *wrt-commands*
+
+                                                                          *:Wrt*
+:Wrt                    Open the worktree picker.
+
+:Wrt {args}             Run any `wrt` command in a floating terminal at the
+                        managed root, which is always a valid working directory
+                        for the CLI. Arguments are tokenized like a shell, so
+                        quotes and backslash escapes work as typed. >
+
+                            :Wrt ls
+                            :Wrt new feat/login --from origin/main
+                            :Wrt db feature-demo reset --yes
+                            :Wrt root status
+<
+                        Completion offers subcommands at the first position and
+                        worktree names afterwards.
+
+==============================================================================
+8. API                                                                 *wrt-api*
+
+All functions live on `require("wrt")`. Worktree arguments accept an allocation
+name or a worktree table; names are slugged for you, so "Feature/Demo" resolves
+to "feature-demo".
+
+wrt.pick({opts})                Open the picker. {opts} is passed to the backend.
+wrt.switch({target}, {opts})    Switch worktree. {opts.from} overrides the source
+                                path, {opts.notify} the notification.
+wrt.create()                    Prompt for `name [flags]`, then run `wrt new`.
+wrt.create_named({name}, {flags})
+                                Same without the prompt.
+wrt.remove({target})            Remove a worktree, asking which flags to use.
+                                nil targets the worktree containing the cwd.
+wrt.list({root})                wrt.Worktree[], main first then alphabetical.
+wrt.current()                   wrt.Worktree|nil for the cwd.
+wrt.main()                      The primary allocation.
+wrt.goto_main()                 Switch to it.
+wrt.root({path})                wrt.Root|nil plus a reason string.
+wrt.slug({name})                Mirror of the CLI's slug().
+wrt.apply_env({target}, {opts}) Push `wrt env` into |vim.env|.
+wrt.restore_env()               Put the replaced values back.
+wrt.prune()                     `wrt prune`.
+wrt.housekeeping({apply})       `wrt housekeeping`; {apply} confirms first.
+wrt.status()                    `wrt root status`.
+wrt.discover()                  `wrt init`, Codex-assisted `.wrt.json` discovery.
+wrt.clone()                     Prompt for a URL and directory, then `wrt clone`.
+wrt.shell({target})             Interactive shell inside a worktree.
+wrt.run({target})               Prompt for a command and run it in a worktree.
+wrt.db({target})                Pick reset, seed or migrate.
+wrt.with_root({fn})             Call {fn}(root), reporting why if there is none.
+wrt.with_current({fn})          Call {fn}(item, root) for the cwd's worktree.
+
+                                                                    *wrt.Worktree*
+A worktree table has: >
+
+    {
+      name = "feature-demo",   -- allocation key; the primary one is "main"
+      branch = "feature/demo",
+      path = "/…/root/feature-demo",
+      block = 2,               -- reserved port block
+      offset = 200,            -- block * 100
+      status = "active",       -- "active"|"creating"|"failed"
+      created_at = "2026-08-09T13:16:55Z",
+      supabase = "none",       -- "none"|"owner"|"isolated"|"shared:<owner>"
+      is_main = false,
+    }
+<
+==============================================================================
+9. EVENTS                                                           *wrt-events*
+
+                                                                    *WrtSwitch*
+Switching worktrees fires a |User| autocommand with pattern `WrtSwitch`: >
+
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "WrtSwitch",
+      callback = function(args)
+        -- args.data = { name = …, path = …, branch = … }
+      end,
+    })
+<
+It fires after buffer migration, the directory change and |:clearjumps|. The
+`wrt env` application is asynchronous, so those variables may reach |vim.env|
+shortly after the event.
+
+==============================================================================
+10. BEHAVIOUR                                                    *wrt-behaviour*
+
+Buffer migration ~
+Listed file buffers whose path lies inside the source worktree are moved to the
+same relative path in the target. Window layout and cursor positions survive; a
+cursor beyond the end of a shorter file is clamped. Buffers whose counterpart
+does not exist are closed and their windows show an empty buffer. Modified
+buffers are left untouched and reported in the count, so nothing unsaved is lost.
+
+Environment ~
+`wrt env` output is parsed and applied to |vim.env|. Values that were already
+set are remembered and restored on the next switch rather than deleted, so the
+environment does not accumulate across switches. A generation counter discards a
+slow `wrt env` result once a newer switch has happened.
+
+`wrt env` exits non-zero when a Supabase-bound worktree's stack is not running.
+That is routine while switching, so it stays silent unless notifications are
+requested; use |wrt.apply_env()| directly to see the error.
+
+Names and branches ~
+In the `wrt new` prompt everything before the first `-flag` is the worktree
+name, so multi-word names need no quoting: >
+
+    Agent 07: retry queue --branch agent/retry
+<
+The directory and allocation key are the slug of the name (lowercase,
+non-alphanumeric runs collapsed to "-"). The branch is normalized differently:
+case and slashes are preserved and only whitespace collapses. A name containing
+a character git rejects in a ref, such as a colon, therefore needs an explicit
+`--branch`.
+
+The primary checkout ~
+Its allocation key is always "main", even when its directory is named after a
+different default branch. It reserves port block 0, cannot be removed, and
+removing the worktree you are standing in switches to main first so the working
+directory stays valid.
+
+==============================================================================
+11. HEALTH                                                          *wrt-health*
+
+`:checkhealth wrt` reports the Neovim version, the resolved `wrt` path and
+whether the binary runs, the git version, whether the current directory is
+inside a managed root, the state.json version compatibility, the picker backend
+that will be used, and which optional dependencies are present.
+
+The CLI has no `--version` flag, so `wrt help` is used as the liveness probe.
+
+==============================================================================
+12. DEVELOPMENT                                                *wrt-development*
+
+Point lazy.nvim at a local checkout: >
+
+    { dir = "~/src/wrt.nvim", opts = {} }
+<
+or use `dev = true` with lazy.nvim's `dev.path` configured to the parent
+directory.
+
+The test suite runs headless against a real `wrt` binary and throwaway managed
+roots that it creates and removes itself: >
+
+    make test-bare   " core Neovim only; proves the vim.ui.select fallback
+    make test-all    " also clones snacks and telescope into .tests/
+    make lint        " stylua --check
+<
+vim:tw=78:ts=8:noet:ft=help:norl:

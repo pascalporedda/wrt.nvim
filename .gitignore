@@ -1,0 +1,4 @@
+doc/tags
+.tests/
+tests/.fixtures/
+*.log
